@@ -1,0 +1,3 @@
+C:/Projects/C/Monopoly/cmake-build-debug/CMakeFiles/Monopoly.dir
+C:/Projects/C/Monopoly/cmake-build-debug/CMakeFiles/edit_cache.dir
+C:/Projects/C/Monopoly/cmake-build-debug/CMakeFiles/rebuild_cache.dir
