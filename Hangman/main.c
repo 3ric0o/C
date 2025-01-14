@@ -106,7 +106,7 @@ int main(void)
 
         while (getchar() != '\n') // Check for extra input
         {
-            fflush(stdin); //stdin == Standard Input
+            fflush(stdin); // stdin == Standard Input
             printf("Warning: Extra input detected. Please enter only one character.\n");
             printf("Enter a letter: ");
             scanf(" %c", &input[0]);
