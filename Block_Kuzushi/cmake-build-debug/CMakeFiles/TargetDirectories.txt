@@ -1,5 +1,0 @@
-C:/Projects/C/Block_Kuzushi/cmake-build-debug/CMakeFiles/Block_Kuzushi.dir
-C:/Projects/C/Block_Kuzushi/cmake-build-debug/CMakeFiles/package.dir
-C:/Projects/C/Block_Kuzushi/cmake-build-debug/CMakeFiles/package_source.dir
-C:/Projects/C/Block_Kuzushi/cmake-build-debug/CMakeFiles/edit_cache.dir
-C:/Projects/C/Block_Kuzushi/cmake-build-debug/CMakeFiles/rebuild_cache.dir
