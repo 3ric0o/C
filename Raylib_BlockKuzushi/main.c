@@ -4,7 +4,51 @@
 #include "raymath.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <time.h>
 
+#define BALL_DAMAGE 999
+
+#define MIN_BALL_SPEED 800.0f
+#define MAX_BALL_SPEED 1400.0f
+#define BASE_BALL_SPEED 900.0f
+
+#define BLOCKS_COLUMNS 8
+#define BLOCKS_ROWS 5
+#define BLOCK_WIDTH 150
+#define BLOCK_HEIGHT 30
+#define BLOCK_PADDING 2
+
+#define MAX_POWERUPS 5
+#define POWERUP_DROP_CHANCE 0.2f
+#define POWERUP_SIZE 30
+#define POWERUP_FALL_SPEED 150.0f
+#define POWERUP_DURATION 15.0f
+
+#define WIDTH           GetScreenWidth()
+#define HEIGHT          GetScreenHeight()
+#define STARS           200
+#define SCROLL_SPEED    0.01f
+
+#define MAX_PARTICLES 100
+#define PARTICLE_LIFETIME 1.0f  // Lifetime in seconds
+
+typedef struct {
+    Vector2 position;
+    Vector2 velocity;
+    Color color;
+    float lifetime;
+    bool active;
+} Particle;
+typedef struct {
+    Particle particles[MAX_PARTICLES];
+    int count;
+} ParticleSystem;
+typedef struct {
+    float x;    //The stars coordinates
+    float y;   //on the screen
+    float z;    //The stars depth or distance from camera
+}Star;
 typedef struct {
     Vector2 position;
     Vector2 velocity;
@@ -13,17 +57,12 @@ typedef struct {
     float max_speed;
     int health;
 } player_t;
-
 typedef struct {
     Vector2 position;
     Vector2 velocity;
     float radius;
     Color color;
 } ball_t;
-
-#define MIN_BALL_SPEED 800.0f
-#define MAX_BALL_SPEED 1400.0f
-#define BASE_BALL_SPEED 900.0f
 typedef enum {
     BLOCK_NORMAL,
     BLOCK_EXPLOSIVE,
@@ -31,24 +70,18 @@ typedef enum {
     BLOCK_MOVING,
     BLOCK_INDESTRUCTIBLE
 } BlockType;
-
 typedef struct {
     Vector2 position;
     Vector2 size;
     Color color;
     bool active;
+    bool visible;
     int hits_required;
     int current_hits;
     BlockType type;
     float ghost_timer;
     float move_direction;
 } block_t;
-
-#define BLOCKS_COLUMNS 8
-#define BLOCKS_ROWS 5
-#define BLOCK_WIDTH 150
-#define BLOCK_HEIGHT 30
-#define BLOCK_PADDING 2
 
 const Color BLOCK_COLORS[] = {GREEN, ORANGE, RED, PURPLE, BLUE};
 const int BLOCK_HITS[] = {1, 2, 3, 4, 5};
@@ -57,26 +90,28 @@ typedef enum {
     PLAYING,
     GAME_OVER
 } GameState;
-
 typedef struct {
     float angle;
     bool visible;
 } LaunchArrow;
-
 typedef enum {
     POWERUP_ENLARGE,
     POWERUP_SPEED,
     POWERUP_LASER,
     POWERUP_STICKY
 } PowerUpType;
-
 typedef struct {
     Vector2 position;
     Vector2 velocity;
     PowerUpType type;
     bool active;
-    Rectangle bounds;
+    float radius;
 } PowerUp;
+
+PowerUp powerups[MAX_POWERUPS];
+float powerup_timer = 0.0f;
+bool has_sticky_powerup = false;
+bool has_laser_powerup = false;
 
 void DrawArrow(Vector2 position, float angle, Color color) {
     float arrowLength = 60.0f;
@@ -98,39 +133,22 @@ void DrawArrow(Vector2 position, float angle, Color color) {
     DrawLineEx(end, arrow1, 3.0f, color);
     DrawLineEx(end, arrow2, 3.0f, color);
 }
-
-#define MAX_POWERUPS 5
-#define POWERUP_DROP_CHANCE 0.2f
-#define POWERUP_SIZE 20
-#define POWERUP_FALL_SPEED 200.0f
-#define POWERUP_DURATION 10.0f  // Duration in seconds
-
-// Add these to your global variables
-PowerUp powerups[MAX_POWERUPS];
-float powerup_timer = 0.0f;
-bool has_sticky_powerup = false;
-bool has_laser_powerup = false;
-
 // Initialize a power-up
 void InitPowerUp(PowerUp* powerup, Vector2 position) {
     powerup->position = position;
     powerup->velocity = (Vector2){0, POWERUP_FALL_SPEED};
     powerup->active = true;
     powerup->type = GetRandomValue(0, 3);  // Random power-up type
-    powerup->bounds = (Rectangle){
-            position.x, position.y,
-            POWERUP_SIZE, POWERUP_SIZE
+    powerup->radius = POWERUP_SIZE / 2;
     };
-}
-
 // Apply power-up effects
 void ApplyPowerUp(PowerUp* powerup, player_t* player) {
     switch (powerup->type) {
         case POWERUP_ENLARGE:
-            player->size.x = fmin(player->size.x * 1.5f, GetScreenWidth() / 4);
+            player->size.x = fmin(player->size.x * 1.5f, GetScreenWidth() / 3);
             break;
         case POWERUP_SPEED:
-            player->max_speed *= 1.5f;
+            player->max_speed = fmin(player->max_speed * 1.5f, 1200.0f);
             break;
         case POWERUP_LASER:
             has_laser_powerup = true;
@@ -141,32 +159,33 @@ void ApplyPowerUp(PowerUp* powerup, player_t* player) {
     }
     powerup_timer = POWERUP_DURATION;
 }
-
 // Update power-ups
 void UpdatePowerUps(PowerUp* powerups, player_t* player, float delta_time) {
+
+    static const float ORIGINAL_SIZE_X = 150.0f;
+    static const float ORIGINAL_SPEED = 800.0f;
     // Update power-up timer
-    if (powerup_timer > 0) {
+    if (powerup_timer > 0)
+    {
         powerup_timer -= delta_time;
         if (powerup_timer <= 0) {
-            // Reset power-up effects
-            player->size.x = 100;  // Original size
-            player->max_speed = 500;  // Original speed
+            // Reset power-up effects using the original values
+            player->size.x = ORIGINAL_SIZE_X;
+            player->max_speed = ORIGINAL_SPEED;
             has_laser_powerup = false;
             has_sticky_powerup = false;
         }
     }
-
     // Update active power-ups
     for (int i = 0; i < MAX_POWERUPS; i++) {
         if (!powerups[i].active) continue;
 
         powerups[i].position.y += powerups[i].velocity.y * delta_time;
-        powerups[i].bounds.y = powerups[i].position.y;
 
-        // Check collision with paddle
-        if (CheckCollisionRecs(powerups[i].bounds,
-                               (Rectangle){player->position.x, player->position.y,
-                                           player->size.x, player->size.y})) {
+        // Check collision with paddle using circle-rectangle collision
+        if (CheckCollisionCircleRec(powerups[i].position, powerups[i].radius,
+                                    (Rectangle){player->position.x, player->position.y,
+                                                player->size.x, player->size.y})) {
             ApplyPowerUp(&powerups[i], player);
             powerups[i].active = false;
         }
@@ -177,7 +196,6 @@ void UpdatePowerUps(PowerUp* powerups, player_t* player, float delta_time) {
         }
     }
 }
-
 // Draw power-ups
 void DrawPowerUps(PowerUp* powerups) {
     for (int i = 0; i < MAX_POWERUPS; i++) {
@@ -204,15 +222,14 @@ void DrawPowerUps(PowerUp* powerups) {
                 powerup_text = "ST";
                 break;
         }
-
-        DrawRectangleRec(powerups[i].bounds, powerup_color);
+        DrawCircleV(powerups[i].position, powerups[i].radius, powerup_color);
+        int textWidth = MeasureText(powerup_text, 15);
         DrawText(powerup_text,
-                 powerups[i].position.x + 5,
-                 powerups[i].position.y + 5,
+                 powerups[i].position.x - textWidth/2,
+                 powerups[i].position.y - 7,
                  15, WHITE);
     }
 }
-
 // Update blocks with special types
 void UpdateBlocks(block_t blocks[BLOCKS_ROWS][BLOCKS_COLUMNS], float delta_time) {
     for (int i = 0; i < BLOCKS_ROWS; i++) {
@@ -224,7 +241,7 @@ void UpdateBlocks(block_t blocks[BLOCKS_ROWS][BLOCKS_COLUMNS], float delta_time)
                     blocks[i][j].ghost_timer += delta_time;
                     if (blocks[i][j].ghost_timer >= 2.0f) {
                         blocks[i][j].ghost_timer = 0.0f;
-                        blocks[i][j].active = !blocks[i][j].active;
+                        blocks[i][j].visible = !blocks[i][j].visible;
                     }
                     break;
 
@@ -255,8 +272,9 @@ void InitializeLevel(block_t blocks[BLOCKS_ROWS][BLOCKS_COLUMNS], int level, flo
     }
 
     switch (level) {
-        case 1: // Level 1 - Basic introduction with a few special blocks
-            for (int i = 0; i < BLOCKS_ROWS; i++) {
+        case 1:
+            // First, place regular blocks
+            for (int i = 0; i < BLOCKS_ROWS - 1; i++) {  // Leave last row for ghost blocks
                 for (int j = 0; j < BLOCKS_COLUMNS; j++) {
                     int color_index = i % 5;
                     blocks[i][j] = (block_t){
@@ -272,66 +290,95 @@ void InitializeLevel(block_t blocks[BLOCKS_ROWS][BLOCKS_COLUMNS], int level, flo
                             .move_direction = 1.0f
                     };
 
-                    // Add a few strategic special blocks
+                    // Add explosive blocks in the middle
                     if (i == 2 && (j == 3 || j == 4)) {
-                        blocks[i][j].type = BLOCK_EXPLOSIVE; // Center explosive blocks
+                        blocks[i][j].type = BLOCK_EXPLOSIVE;
                     }
                     if (i == 0 && (j == 0 || j == 7)) {
-                        blocks[i][j].type = BLOCK_INDESTRUCTIBLE; // Corner indestructible blocks
+                        blocks[i][j].type = BLOCK_INDESTRUCTIBLE;
                     }
                 }
             }
+            // Add ghost blocks in the last row
+            for (int j = 2; j < 6; j++) {  // Place ghost blocks in middle positions
+                blocks[BLOCKS_ROWS-1][j] = (block_t){
+                        .position = (Vector2){j * (BLOCK_WIDTH + BLOCK_PADDING) + offset_x,
+                                              (BLOCKS_ROWS-1) * (BLOCK_HEIGHT + BLOCK_PADDING) + offset_y},
+                        .size = (Vector2){BLOCK_WIDTH, BLOCK_HEIGHT},
+                        .color = SKYBLUE,
+                        .active = true,
+                        .hits_required = 1,
+                        .current_hits = 0,
+                        .type = BLOCK_GHOST,
+                        .visible = true,
+                        .ghost_timer = 0.0f,
+                        .move_direction = 1.0f
+                };
+            }
             break;
 
-        case 2: // Level 2 - More complex with moving and ghost blocks
-            for (int i = 0; i < BLOCKS_ROWS; i++) {
+        case 2:
+            // Place regular and moving blocks first
+            for (int i = 0; i < BLOCKS_ROWS - 1; i++) {
                 for (int j = 0; j < BLOCKS_COLUMNS; j++) {
-                    int color_index = (i + j) % 5; // Checkered pattern
+                    int color_index = (i + j) % 5;
                     blocks[i][j] = (block_t){
                             .position = (Vector2){j * (BLOCK_WIDTH + BLOCK_PADDING) + offset_x,
                                                   i * (BLOCK_HEIGHT + BLOCK_PADDING) + offset_y},
                             .size = (Vector2){BLOCK_WIDTH, BLOCK_HEIGHT},
                             .color = BLOCK_COLORS[color_index],
                             .active = true,
-                            .hits_required = BLOCK_HITS[color_index] + 1, // Harder blocks
+                            .hits_required = BLOCK_HITS[color_index] + 1,
                             .current_hits = 0,
                             .type = BLOCK_NORMAL,
                             .ghost_timer = 0.0f,
                             .move_direction = 1.0f
                     };
 
-                    // Add special blocks in a pattern
-                    if (i == 1 && (j % 2 == 0)) {
-                        blocks[i][j].type = BLOCK_GHOST;
+                    if (i == 2 && j == 4) {
+                        blocks[i][j].type = BLOCK_EXPLOSIVE;
                     }
                     if (i == 3 && (j % 2 == 1)) {
                         blocks[i][j].type = BLOCK_MOVING;
                     }
-                    if (i == 2 && j == 4) {
-                        blocks[i][j].type = BLOCK_EXPLOSIVE;
-                    }
                 }
+            }
+            // Add ghost blocks in bottom row with alternating pattern
+            for (int j = 0; j < BLOCKS_COLUMNS; j += 2) {
+                blocks[BLOCKS_ROWS-1][j] = (block_t){
+                        .position = (Vector2){j * (BLOCK_WIDTH + BLOCK_PADDING) + offset_x,
+                                              (BLOCKS_ROWS-1) * (BLOCK_HEIGHT + BLOCK_PADDING) + offset_y},
+                        .size = (Vector2){BLOCK_WIDTH, BLOCK_HEIGHT},
+                        .color = SKYBLUE,
+                        .active = true,
+                        .hits_required = 1,
+                        .current_hits = 0,
+                        .type = BLOCK_GHOST,
+                        .visible = true,
+                        .ghost_timer = 0.0f,
+                        .move_direction = 1.0f
+                };
             }
             break;
 
-        case 3: // Level 3 - Most challenging with complex patterns
-            for (int i = 0; i < BLOCKS_ROWS; i++) {
+        case 3:
+            // Place regular blocks and other special blocks
+            for (int i = 0; i < BLOCKS_ROWS - 1; i++) {
                 for (int j = 0; j < BLOCKS_COLUMNS; j++) {
-                    int color_index = 4 - (i % 5); // Reverse color pattern
+                    int color_index = 4 - (i % 5);
                     blocks[i][j] = (block_t){
                             .position = (Vector2){j * (BLOCK_WIDTH + BLOCK_PADDING) + offset_x,
                                                   i * (BLOCK_HEIGHT + BLOCK_PADDING) + offset_y},
                             .size = (Vector2){BLOCK_WIDTH, BLOCK_HEIGHT},
                             .color = BLOCK_COLORS[color_index],
                             .active = true,
-                            .hits_required = BLOCK_HITS[color_index] + 2, // Even harder blocks
+                            .hits_required = BLOCK_HITS[color_index] + 2,
                             .current_hits = 0,
                             .type = BLOCK_NORMAL,
                             .ghost_timer = 0.0f,
                             .move_direction = 1.0f
                     };
 
-                    // Complex pattern of special blocks
                     if ((i + j) % 2 == 0 && i < 2) {
                         blocks[i][j].type = BLOCK_INDESTRUCTIBLE;
                     }
@@ -341,15 +388,29 @@ void InitializeLevel(block_t blocks[BLOCKS_ROWS][BLOCKS_COLUMNS], int level, flo
                     if (i == 3) {
                         blocks[i][j].type = BLOCK_MOVING;
                     }
-                    if (i == 4 && (j % 3 == 0)) {
-                        blocks[i][j].type = BLOCK_GHOST;
-                    }
+                }
+            }
+            // Add ghost blocks in a zigzag pattern in bottom row
+            for (int j = 0; j < BLOCKS_COLUMNS; j++) {
+                if (j % 3 == 0) {
+                    blocks[BLOCKS_ROWS-1][j] = (block_t){
+                            .position = (Vector2){j * (BLOCK_WIDTH + BLOCK_PADDING) + offset_x,
+                                                  (BLOCKS_ROWS-1) * (BLOCK_HEIGHT + BLOCK_PADDING) + offset_y},
+                            .size = (Vector2){BLOCK_WIDTH, BLOCK_HEIGHT},
+                            .color = SKYBLUE,
+                            .active = true,
+                            .hits_required = 1,
+                            .current_hits = 0,
+                            .type = BLOCK_GHOST,
+                            .visible = true,
+                            .ghost_timer = 0.0f,
+                            .move_direction = 1.0f
+                    };
                 }
             }
             break;
     }
 }
-
 bool IsLevelComplete(block_t blocks[BLOCKS_ROWS][BLOCKS_COLUMNS]) {
     for (int i = 0; i < BLOCKS_ROWS; i++) {
         for (int j = 0; j < BLOCKS_COLUMNS; j++) {
@@ -360,7 +421,6 @@ bool IsLevelComplete(block_t blocks[BLOCKS_ROWS][BLOCKS_COLUMNS]) {
     }
     return true;
 }
-
 void NormalizeBallSpeed(ball_t* ball) {
     float speed = Vector2Length(ball->velocity);
     if (speed < MIN_BALL_SPEED || speed > MAX_BALL_SPEED) {
@@ -368,14 +428,94 @@ void NormalizeBallSpeed(ball_t* ball) {
         ball->velocity = Vector2Scale(Vector2Normalize(ball->velocity), speed);
     }
 }
+void InitParticleSystem(ParticleSystem* system) {
+    system->count = 0;
+    for (int i = 0; i < MAX_PARTICLES; i++) {
+        system->particles[i].active = false;
+    }
+}
+void CreateExplosion(ParticleSystem* system, Vector2 position, Color color) {
+    int particlesToCreate = 50;
+
+    for (int i = 0; i < particlesToCreate && system->count < MAX_PARTICLES; i++) {
+        Particle* p = &system->particles[system->count];
+
+        p->position = position;
+
+        // Random angle for particle direction
+        float angle = (float)GetRandomValue(0, 360) * DEG2RAD;
+        float speed = (float)GetRandomValue(100, 300);
+        p->velocity.x = cosf(angle) * speed;
+        p->velocity.y = sinf(angle) * speed;
+
+        // Random color variation
+        p->color = color;
+        p->color.r = (unsigned char)Clamp(color.r + GetRandomValue(-40, 40), 0, 255);
+        p->color.g = (unsigned char)Clamp(color.g + GetRandomValue(-40, 40), 0, 255);
+        p->color.b = (unsigned char)Clamp(color.b + GetRandomValue(-40, 40), 0, 255);
+
+        p->lifetime = PARTICLE_LIFETIME;
+        p->active = true;
+
+        system->count++;
+    }
+}
+void UpdateParticleSystem(ParticleSystem* system, float delta_time) {
+    for (int i = 0; i < system->count; i++) {
+        if (!system->particles[i].active) continue;
+
+        // Update particle position
+        system->particles[i].position.x += system->particles[i].velocity.x * delta_time;
+        system->particles[i].position.y += system->particles[i].velocity.y * delta_time;
+
+        // Update lifetime and alpha
+        system->particles[i].lifetime -= delta_time;
+        system->particles[i].color.a = (unsigned char)(255.0f * (system->particles[i].lifetime / PARTICLE_LIFETIME));
+
+        // Add some gravity effect
+        system->particles[i].velocity.y += 400.0f * delta_time;
+
+        // Deactivate if lifetime is over
+        if (system->particles[i].lifetime <= 0) {
+            system->particles[i].active = false;
+
+            // Swap with last active particle and decrease count
+            if (i != system->count - 1) {
+                system->particles[i] = system->particles[system->count - 1];
+                i--;
+            }
+            system->count--;
+        }
+    }
+}
+void DrawParticleSystem(ParticleSystem* system) {
+    for (int i = 0; i < system->count; i++) {
+        if (system->particles[i].active) {
+            DrawCircleV(system->particles[i].position, 5, system->particles[i].color);
+        }
+    }
+}
+
+float randf() { return (rand() % 1000) / 1000.0f; }
 
 int main() {
     InitWindow(1600, 1200, "Block Kuzushi");
 
+    ParticleSystem particleSystem;
+    InitParticleSystem(&particleSystem);
+    Star stars[STARS] = {0};
+    srand(time(0));
     int level = 1;
     int score = 0;
     GameState gameState = PLAYING;
     bool ball_launched = false;
+
+    //-----RANDOMISE THE STARS POSITIONS-----//
+    for (int i = 0; i < STARS; i++) {
+        stars[i].x = GetRandomValue(0, WIDTH);
+        stars[i].y = GetRandomValue(0, HEIGHT);
+        stars[i].z = randf();
+    }
 
     LaunchArrow arrow =
             {
@@ -392,7 +532,7 @@ int main() {
             .velocity = (Vector2){0, 0},
             .size = (Vector2){150, 30},
             .color = RED,
-            .max_speed = 500,
+            .max_speed = 800,
             .health = 3
             };
 
@@ -416,10 +556,30 @@ int main() {
         powerups[i].active = false;
     }
 
-    char score_text[32];  // Buffer for score display
+    char score_text[32];
 
     while (!WindowShouldClose()) {
         float delta_time = GetFrameTime();
+
+        //-----SCROLL THE STARS-----//
+        for (int i = 0; i < STARS; i++) {
+            stars[i].x -= SCROLL_SPEED * (stars[i].z / 1);
+
+            if (stars[i].x <= 0) {  // Check if the star has gone off screen
+                stars[i].x += WIDTH;
+                stars[i].y = GetRandomValue(0, HEIGHT);
+            }
+        }
+
+        //-----DRAW THE STARS-----//
+        BeginDrawing();
+        ClearBackground((Color){0, 0, 0, 255});
+        for (int i = 0; i < STARS; i++) {
+            float x = stars[i].x;
+            float y = stars[i].y;
+
+            DrawPixel(x, y, WHITE);
+        }
 
         if (gameState == PLAYING) {
             player.velocity = (Vector2) {0.0f, 0.0f};
@@ -454,7 +614,9 @@ int main() {
                 if (arrow.angle >= 0) {
                     direction = -1.0f;
                     arrow.angle = 0;
-                } else if (arrow.angle <= -180) {
+                }
+                else if (arrow.angle <= -180)
+                {
                     direction = 1.0f;
                     arrow.angle = -180;
                 }
@@ -471,7 +633,8 @@ int main() {
                     NormalizeBallSpeed(&ball);
                 }
             }
-            else {
+            else
+            {
                 // 1. First update ball position
                 Vector2 next_position = Vector2Add(ball.position, Vector2Scale(ball.velocity, delta_time));
                 ball.position = next_position;
@@ -516,7 +679,7 @@ int main() {
                 bool collision_handled = false;
                 for (int i = 0; i < BLOCKS_ROWS && !collision_handled; i++) {
                     for (int j = 0; j < BLOCKS_COLUMNS && !collision_handled; j++) {
-                        if (!blocks[i][j].active) continue;
+                        if (!blocks[i][j].active || (blocks[i][j].type == BLOCK_GHOST && !blocks[i][j].visible)) continue;
 
                         Rectangle block = {
                                 blocks[i][j].position.x,
@@ -530,6 +693,11 @@ int main() {
 
                             // Handle block hit first
                             if (blocks[i][j].type == BLOCK_EXPLOSIVE) {
+                                // Create explosion effect
+                                CreateExplosion(&particleSystem,
+                                                (Vector2){blocks[i][j].position.x + blocks[i][j].size.x/2,
+                                                          blocks[i][j].position.y + blocks[i][j].size.y/2},
+                                                RED);
                                 // Handle explosive blocks
                                 for (int di = -1; di <= 1; di++) {
                                     for (int dj = -1; dj <= 1; dj++) {
@@ -542,7 +710,7 @@ int main() {
                                 }
                                 blocks[i][j].active = false;
                             } else if (blocks[i][j].type != BLOCK_INDESTRUCTIBLE) {
-                                blocks[i][j].current_hits++;
+                                blocks[i][j].current_hits += BALL_DAMAGE;
                                 if (blocks[i][j].current_hits >= blocks[i][j].hits_required) {
                                     blocks[i][j].active = false;
                                     score += blocks[i][j].hits_required * 100;
@@ -573,19 +741,19 @@ int main() {
 
                             // If normal is very small, determine based on entry direction
                             if (Vector2Length(normal) < 0.1f) {
-                                float dx = ball.position.x - (block.x + block.width/2);
-                                float dy = ball.position.y - (block.y + block.height/2);
+                                float dx = ball.position.x - (block.x + block.width / 2);
+                                float dy = ball.position.y - (block.y + block.height / 2);
                                 if (fabsf(dx) > fabsf(dy)) {
-                                    normal = (Vector2){ (dx > 0) ? 1.0f : -1.0f, 0 };
+                                    normal = (Vector2) {(dx > 0) ? 1.0f : -1.0f, 0};
                                 } else {
-                                    normal = (Vector2){ 0, (dy > 0) ? 1.0f : -1.0f };
+                                    normal = (Vector2) {0, (dy > 0) ? 1.0f : -1.0f};
                                 }
                             }
 
                             // Reflect velocity
                             float dotProduct = Vector2DotProduct(ball.velocity, normal);
                             ball.velocity = Vector2Subtract(ball.velocity,
-                                                            Vector2Scale(normal, 2*dotProduct));
+                                                            Vector2Scale(normal, 2 * dotProduct));
 
                             // Move ball out of collision
                             float overlap = ball.radius - Vector2Distance(ball.position, closest);
@@ -606,39 +774,46 @@ int main() {
                             }
                             NormalizeBallSpeed(&ball);
                         }
-            // Update power-ups
-            UpdatePowerUps(powerups, &player, delta_time);
 
-            // Update blocks
-            UpdateBlocks(blocks, delta_time);
-
-            if (IsLevelComplete(blocks)) {
+                    }
+                }
+            }
+            if (ball.position.y > GetScreenHeight()) {
+                player.health--;
+                if (player.health <= 0) {
+                    gameState = GAME_OVER;
+                } else {
+                    ball_launched = false;
+                    arrow.visible = true;
+                    ball.position = (Vector2){player.position.x + player.size.x / 2,
+                                              player.position.y - ball.radius};
+                    ball.velocity = (Vector2){0, 0};
+                }
+            }
+            if (IsLevelComplete(blocks))
+            {
                 level++;
-                if (level <= 3) {
+                if (level <= 3)
+                {
                     // Initialize next level
                     InitializeLevel(blocks, level, offset_x, offset_y);
-                    // Reset ball position
+                    // Reset ball
                     ball_launched = false;
-                    ball.position = (Vector2) {player.position.x + player.size.x / 2, player.position.y - ball.radius};
+                    ball.position = (Vector2) {player.position.x + player.size.x / 2,
+                                               player.position.y - ball.radius};
                     ball.velocity = (Vector2) {0, 0};
                     arrow.visible = true;
-                }
-                else
+                } else
                 {
                     // Player won the game
                     gameState = GAME_OVER;
                     score += 1000 * player.health; // Bonus points for remaining health
                 }
             }
-            // 6. Check if ball is below paddle
-            if (ball.position.y > GetScreenHeight()) {
-                player.health--;
-                ball_launched = false;
-                arrow.visible = true;
-            }
-        }
 
-        BeginDrawing();
+            UpdatePowerUps(powerups, &player, delta_time);
+            UpdateBlocks(blocks, delta_time);
+        }
         ClearBackground(BLACK);
 
         if (gameState == PLAYING) {
@@ -648,7 +823,7 @@ int main() {
             // Draw blocks
             for (int i = 0; i < BLOCKS_ROWS; i++) {
                 for (int j = 0; j < BLOCKS_COLUMNS; j++) {
-                    if (blocks[i][j].active) {
+                    if (blocks[i][j].active && (blocks[i][j].type != BLOCK_GHOST || blocks[i][j].visible)) {
                         Color blockColor;
                         char blockText[3];  // Buffer for block text
 
@@ -720,7 +895,7 @@ int main() {
             DrawText(score_text, 1460, 10, 30, WHITE);
 
             sprintf(score_text, "Score: %d", score);
-            DrawText(score_text, 10, 50, 30, WHITE);
+            DrawText(score_text, 150, 10, 30, WHITE);
 
             sprintf(score_text, "Level: %d", level);
             DrawText(score_text, 10, 10, 30, WHITE);
@@ -733,7 +908,6 @@ int main() {
                 sprintf(timer_text, "Power-up: %.1f", powerup_timer);
                 DrawText(timer_text, 10, 90, 20, YELLOW);
             }
-
             // Draw active power-up indicators
             if (has_sticky_powerup) {
                 DrawText("STICKY", 10, 120, 20, PURPLE);
@@ -793,6 +967,8 @@ int main() {
                 InitializeLevel(blocks, level, offset_x, offset_y);
             }
         }
+        UpdateParticleSystem(&particleSystem, delta_time);
+        DrawParticleSystem(&particleSystem);
         EndDrawing();
     }
     CloseWindow();
