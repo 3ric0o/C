@@ -40,15 +40,18 @@ typedef struct {
     float lifetime;
     bool active;
 } Particle;
+
 typedef struct {
     Particle particles[MAX_PARTICLES];
     int count;
 } ParticleSystem;
+
 typedef struct {
     float x;    //The stars coordinates
-    float y;   //on the screen
+    float y;    //on the screen
     float z;    //The stars depth or distance from camera
 }Star;
+
 typedef struct {
     Vector2 position;
     Vector2 velocity;
@@ -57,12 +60,14 @@ typedef struct {
     float max_speed;
     int health;
 } player_t;
+
 typedef struct {
     Vector2 position;
     Vector2 velocity;
     float radius;
     Color color;
 } ball_t;
+
 typedef enum {
     BLOCK_NORMAL,
     BLOCK_EXPLOSIVE,
@@ -70,6 +75,7 @@ typedef enum {
     BLOCK_MOVING,
     BLOCK_INDESTRUCTIBLE
 } BlockType;
+
 typedef struct {
     Vector2 position;
     Vector2 size;
@@ -90,16 +96,19 @@ typedef enum {
     PLAYING,
     GAME_OVER
 } GameState;
+
 typedef struct {
     float angle;
     bool visible;
 } LaunchArrow;
+
 typedef enum {
     POWERUP_ENLARGE,
     POWERUP_SPEED,
     POWERUP_LASER,
     POWERUP_STICKY
 } PowerUpType;
+
 typedef struct {
     Vector2 position;
     Vector2 velocity;
@@ -133,6 +142,7 @@ void DrawArrow(Vector2 position, float angle, Color color) {
     DrawLineEx(end, arrow1, 3.0f, color);
     DrawLineEx(end, arrow2, 3.0f, color);
 }
+
 // Initialize a power-up
 void InitPowerUp(PowerUp* powerup, Vector2 position) {
     powerup->position = position;
@@ -141,6 +151,7 @@ void InitPowerUp(PowerUp* powerup, Vector2 position) {
     powerup->type = GetRandomValue(0, 3);  // Random power-up type
     powerup->radius = POWERUP_SIZE / 2;
     };
+
 // Apply power-up effects
 void ApplyPowerUp(PowerUp* powerup, player_t* player) {
     switch (powerup->type) {
@@ -159,6 +170,7 @@ void ApplyPowerUp(PowerUp* powerup, player_t* player) {
     }
     powerup_timer = POWERUP_DURATION;
 }
+
 // Update power-ups
 void UpdatePowerUps(PowerUp* powerups, player_t* player, float delta_time) {
 
@@ -196,6 +208,7 @@ void UpdatePowerUps(PowerUp* powerups, player_t* player, float delta_time) {
         }
     }
 }
+
 // Draw power-ups
 void DrawPowerUps(PowerUp* powerups) {
     for (int i = 0; i < MAX_POWERUPS; i++) {
@@ -230,6 +243,7 @@ void DrawPowerUps(PowerUp* powerups) {
                  15, WHITE);
     }
 }
+
 // Update blocks with special types
 void UpdateBlocks(block_t blocks[BLOCKS_ROWS][BLOCKS_COLUMNS], float delta_time) {
     for (int i = 0; i < BLOCKS_ROWS; i++) {
@@ -254,7 +268,7 @@ void UpdateBlocks(block_t blocks[BLOCKS_ROWS][BLOCKS_COLUMNS], float delta_time)
                     break;
 
                 case BLOCK_EXPLOSIVE:
-                    // Handle explosion when hit
+                    // TODO Handle explosion when hit
                     break;
 
                 default:
@@ -565,7 +579,7 @@ int main() {
         for (int i = 0; i < STARS; i++) {
             stars[i].x -= SCROLL_SPEED * (stars[i].z / 1);
 
-            if (stars[i].x <= 0) {  // Check if the star has gone off screen
+            if (stars[i].x <= 0) {  // Check if the star has gone offscreen
                 stars[i].x += WIDTH;
                 stars[i].y = GetRandomValue(0, HEIGHT);
             }
@@ -640,10 +654,13 @@ int main() {
                 ball.position = next_position;
 
                 // 2. Handle wall collisions first
-                if (ball.position.x >= GetScreenWidth() - ball.radius) {
+                if (ball.position.x >= GetScreenWidth() - ball.radius)
+                {
                     ball.position.x = GetScreenWidth() - ball.radius;
                     ball.velocity.x = -fabsf(ball.velocity.x);
-                } else if (ball.position.x <= ball.radius) {
+                }
+                else if (ball.position.x <= ball.radius)
+                {
                     ball.position.x = ball.radius;
                     ball.velocity.x = fabsf(ball.velocity.x);
                 }
@@ -739,7 +756,6 @@ int main() {
                             // Calculate normal from closest point
                             Vector2 normal = Vector2Normalize(Vector2Subtract(prev_pos, closest));
 
-                            // If normal is very small, determine based on entry direction
                             if (Vector2Length(normal) < 0.1f) {
                                 float dx = ball.position.x - (block.x + block.width / 2);
                                 float dy = ball.position.y - (block.y + block.height / 2);
@@ -929,7 +945,7 @@ int main() {
             int scoreWidth = MeasureText(finalScoreText, 30);
             int restartWidth = MeasureText(restartText, 20);
 
-            Color titleColor = level > 3 ? GREEN : RED;  // Green for win, Red for loss
+            Color titleColor = level > 3 ? GREEN : RED;
 
             DrawText(gameOverText,
                      GetScreenWidth() / 2 - gameOverWidth / 2,
