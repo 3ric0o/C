@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define BALL_DAMAGE 999
+#define BALL_DAMAGE 1
 
 #define MIN_BALL_SPEED 800.0f
 #define MAX_BALL_SPEED 1400.0f
@@ -32,6 +32,10 @@
 
 #define MAX_PARTICLES 100
 #define PARTICLE_LIFETIME 1.0f  // Lifetime in seconds
+
+#define MAX_LASERS 10
+#define LASER_SPEED 800.0f
+#define LASER_COOLDOWN 0.2f  // Time between shots in seconds
 
 typedef struct {
     Vector2 position;
@@ -124,10 +128,113 @@ typedef struct {
 
 StickyState sticky_state = { false, (Vector2){0, 0} };
 
+typedef struct {
+    Vector2 position;
+    Vector2 velocity;
+    bool active;
+    Color color;
+    float width;
+    float height;
+} Laser;
+
+Laser lasers[MAX_LASERS];
+float laser_cooldown = 0.0f;
+
 PowerUp powerups[MAX_POWERUPS];
 float powerup_timer = 0.0f;
 bool has_sticky_powerup = false;
 bool has_laser_powerup = false;
+
+void InitializeLasers() {
+    for (int i = 0; i < MAX_LASERS; i++) {
+        lasers[i].active = false;
+    }
+}
+
+void ShootLaser(Vector2 position) {
+    for (int i = 0; i < MAX_LASERS; i++) {
+        if (!lasers[i].active) {
+            lasers[i].position = position;
+            lasers[i].velocity = (Vector2){0, -LASER_SPEED};
+            lasers[i].active = true;
+            lasers[i].color = RED;
+            lasers[i].width = 4;
+            lasers[i].height = 15;
+            break;
+        }
+    }
+}
+
+void UpdateLasers(Laser* lasers, block_t blocks[BLOCKS_ROWS][BLOCKS_COLUMNS], float delta_time) {
+    // Update laser cooldown
+    if (laser_cooldown > 0) {
+        laser_cooldown -= delta_time;
+    }
+
+    // Update each laser
+    for (int i = 0; i < MAX_LASERS; i++) {
+        if (!lasers[i].active) continue;
+
+        // Move laser
+        lasers[i].position.y += lasers[i].velocity.y * delta_time;
+
+        // Check if laser is off screen
+        if (lasers[i].position.y < 0) {
+            lasers[i].active = false;
+            continue;
+        }
+
+        // Check collision with blocks
+        bool collision = false;
+        for (int row = 0; row < BLOCKS_ROWS && !collision; row++) {
+            for (int col = 0; col < BLOCKS_COLUMNS && !collision; col++) {
+                if (!blocks[row][col].active ||
+                    (blocks[row][col].type == BLOCK_GHOST && !blocks[row][col].visible)) continue;
+
+                Rectangle block = {
+                        blocks[row][col].position.x,
+                        blocks[row][col].position.y,
+                        blocks[row][col].size.x,
+                        blocks[row][col].size.y
+                };
+
+                Rectangle laser = {
+                        lasers[i].position.x - lasers[i].width/2,
+                        lasers[i].position.y - lasers[i].height/2,
+                        lasers[i].width,
+                        lasers[i].height
+                };
+
+                if (CheckCollisionRecs(laser, block)) {
+                    collision = true;
+                    lasers[i].active = false;
+
+                    // Handle block hit
+                    if (blocks[row][col].type != BLOCK_INDESTRUCTIBLE) {
+                        blocks[row][col].current_hits += BALL_DAMAGE;
+                        if (blocks[row][col].current_hits >= blocks[row][col].hits_required) {
+                            blocks[row][col].active = false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void DrawLasers(Laser* lasers) {
+    for (int i = 0; i < MAX_LASERS; i++) {
+        if (lasers[i].active) {
+            DrawRectangle(
+                    lasers[i].position.x - lasers[i].width/2,
+                    lasers[i].position.y - lasers[i].height/2,
+                    lasers[i].width,
+                    lasers[i].height,
+                    lasers[i].color
+            );
+        }
+    }
+}
 
 void DrawArrow(Vector2 position, float angle, Color color) {
     float arrowLength = 60.0f;
@@ -525,6 +632,7 @@ int main() {
 
     ParticleSystem particleSystem;
     InitParticleSystem(&particleSystem);
+    InitializeLasers();
     Star stars[STARS] = {0};
     srand(time(0));
     int level = 1;
@@ -619,6 +727,16 @@ int main() {
             player.position = Vector2Add(player.position, player.velocity);
             // Keep player within screen bounds
             player.position.x = Clamp(player.position.x, 0, GetScreenWidth() - player.size.x);
+
+
+            if (has_laser_powerup && laser_cooldown <= 0) {
+                Vector2 laserPos = {
+                        player.position.x + player.size.x/2,
+                        player.position.y
+                };
+                ShootLaser(laserPos);
+                laser_cooldown = LASER_COOLDOWN;
+            }
 
             if (!ball_launched) {
                 // Keep ball on paddle
@@ -866,12 +984,14 @@ int main() {
 
             UpdatePowerUps(powerups, &player, delta_time);
             UpdateBlocks(blocks, delta_time);
+            UpdateLasers(lasers, blocks, delta_time);
         }
         ClearBackground(BLACK);
 
         if (gameState == PLAYING) {
             DrawRectangleV(player.position, player.size, player.color);
             DrawCircleV(ball.position, ball.radius, ball.color);
+            DrawLasers(lasers);
 
             // Draw blocks
             for (int i = 0; i < BLOCKS_ROWS; i++) {
@@ -1023,6 +1143,8 @@ int main() {
 
                 // Initialize level 1
                 InitializeLevel(blocks, level, offset_x, offset_y);
+                InitializeLasers();
+                laser_cooldown = 0.0f;
             }
         }
         UpdateParticleSystem(&particleSystem, delta_time);
