@@ -117,6 +117,13 @@ typedef struct {
     float radius;
 } PowerUp;
 
+typedef struct {
+    bool is_stuck;           // Is the ball currently stuck to the paddle?
+    Vector2 stick_offset;    // Relative position of the ball to the paddle when stuck
+} StickyState;
+
+StickyState sticky_state = { false, (Vector2){0, 0} };
+
 PowerUp powerups[MAX_POWERUPS];
 float powerup_timer = 0.0f;
 bool has_sticky_powerup = false;
@@ -186,6 +193,7 @@ void UpdatePowerUps(PowerUp* powerups, player_t* player, float delta_time) {
             player->max_speed = ORIGINAL_SPEED;
             has_laser_powerup = false;
             has_sticky_powerup = false;
+            sticky_state.is_stuck = false;
         }
     }
     // Update active power-ups
@@ -614,23 +622,21 @@ int main() {
 
             if (!ball_launched) {
                 // Keep ball on paddle
-                ball.position = (Vector2)
-                        {
-                                player.position.x + player.size.x / 2,
-                                player.position.y - ball.radius
-                        };
+                ball.position = (Vector2){
+                        player.position.x + player.size.x / 2,
+                        player.position.y - ball.radius
+                };
 
+                // Add arrow movement
                 static float direction = 1.0f;  // 1 for right, -1 for left
-
                 arrow.angle += (ARROW_SPEED * direction * delta_time);
 
-                // Reverse direction
+                // Reverse direction when reaching limits
                 if (arrow.angle >= 0) {
                     direction = -1.0f;
                     arrow.angle = 0;
                 }
-                else if (arrow.angle <= -180)
-                {
+                else if (arrow.angle <= -180) {
                     direction = 1.0f;
                     arrow.angle = -180;
                 }
@@ -647,51 +653,82 @@ int main() {
                     NormalizeBallSpeed(&ball);
                 }
             }
-            else
-            {
-                // 1. First update ball position
-                Vector2 next_position = Vector2Add(ball.position, Vector2Scale(ball.velocity, delta_time));
-                ball.position = next_position;
+            else {  // ball is launched
+                if (sticky_state.is_stuck) {
+                    // Update ball position relative to paddle
+                    ball.position.x = player.position.x + player.size.x/2 + sticky_state.stick_offset.x;
+                    ball.position.y = player.position.y + sticky_state.stick_offset.y;
 
-                // 2. Handle wall collisions first
-                if (ball.position.x >= GetScreenWidth() - ball.radius)
-                {
-                    ball.position.x = GetScreenWidth() - ball.radius;
-                    ball.velocity.x = -fabsf(ball.velocity.x);
+                    // Add arrow movement when ball is stuck
+                    arrow.visible = true;
+                    static float direction = 1.0f;  // 1 for right, -1 for left
+                    arrow.angle += (ARROW_SPEED * direction * delta_time);
+
+                    // Reverse direction when reaching limits
+                    if (arrow.angle >= 0) {
+                        direction = -1.0f;
+                        arrow.angle = 0;
+                    }
+                    else if (arrow.angle <= -180) {
+                        direction = 1.0f;
+                        arrow.angle = -180;
+                    }
+
+                    // Check for launch input
+                    if (IsKeyPressed(KEY_SPACE)) {
+                        sticky_state.is_stuck = false;
+                        arrow.visible = false;
+                        // Calculate launch angle using the arrow angle instead of paddle position
+                        float radians = arrow.angle * DEG2RAD;
+                        ball.velocity.x = cosf(radians) * BASE_BALL_SPEED;
+                        ball.velocity.y = sinf(radians) * BASE_BALL_SPEED;
+                        NormalizeBallSpeed(&ball);
+                    }
                 }
-                else if (ball.position.x <= ball.radius)
-                {
-                    ball.position.x = ball.radius;
-                    ball.velocity.x = fabsf(ball.velocity.x);
+                else {  // ball is launched and not stuck
+                    // 1. First update ball position
+                    Vector2 next_position = Vector2Add(ball.position, Vector2Scale(ball.velocity, delta_time));
+                    ball.position = next_position;
+
+                    // 2. Handle wall collisions first
+                    if (ball.position.x >= GetScreenWidth() - ball.radius) {
+                        ball.position.x = GetScreenWidth() - ball.radius;
+                        ball.velocity.x = -fabsf(ball.velocity.x);
+                    }
+                    else if (ball.position.x <= ball.radius) {
+                        ball.position.x = ball.radius;
+                        ball.velocity.x = fabsf(ball.velocity.x);
+                    }
+
+                    if (ball.position.y <= ball.radius) {
+                        ball.position.y = ball.radius;
+                        ball.velocity.y = fabsf(ball.velocity.y);
+                    }
+
+                    // 3. Handle paddle collision
+                    if (CheckCollisionCircleRec(ball.position, ball.radius,
+                                                (Rectangle){player.position.x, player.position.y, player.size.x, player.size.y})) {
+                        if (has_sticky_powerup && !sticky_state.is_stuck) {
+                            // Ball becomes stuck to the paddle
+                            sticky_state.is_stuck = true;
+                            // Calculate and store the offset from the paddle's center
+                            sticky_state.stick_offset.x = ball.position.x - (player.position.x + player.size.x/2);
+                            sticky_state.stick_offset.y = -(ball.radius + player.size.y/2);
+                            ball.velocity = (Vector2){0, 0}; // Stop the ball
+                        }
+                        else {
+                            // Normal paddle collision code
+                            float hitPosition = (ball.position.x - player.position.x) / player.size.x;
+                            float angle = (hitPosition - 0.5f) * 120.0f;
+                            float radians = angle * DEG2RAD;
+                            float speed = Vector2Length(ball.velocity);
+                            speed = Clamp(speed, MIN_BALL_SPEED, MAX_BALL_SPEED);
+                            ball.velocity.x = sinf(radians) * speed;
+                            ball.velocity.y = -fabsf(cosf(radians) * speed);
+                            ball.position.y = player.position.y - ball.radius - 1;
+                        }
+                    }
                 }
-
-                if (ball.position.y <= ball.radius) {
-                    ball.position.y = ball.radius;
-                    ball.velocity.y = fabsf(ball.velocity.y);
-                }
-
-                // 3. Handle paddle collision
-                if (CheckCollisionCircleRec(ball.position, ball.radius,
-                                            (Rectangle){player.position.x, player.position.y, player.size.x, player.size.y})) {
-
-                    // Calculate hit position on paddle (0 to 1)
-                    float hitPosition = (ball.position.x - player.position.x) / player.size.x;
-
-                    // Angle range from -60 to 60 degrees
-                    float angle = (hitPosition - 0.5f) * 120.0f;
-                    float radians = angle * DEG2RAD;
-
-                    // Set new velocity based on angle
-                    float speed = Vector2Length(ball.velocity);
-                    speed = Clamp(speed, MIN_BALL_SPEED, MAX_BALL_SPEED);
-
-                    ball.velocity.x = sinf(radians) * speed;
-                    ball.velocity.y = -fabsf(cosf(radians) * speed); // Always bounce up
-
-                    // Move ball above paddle to prevent sticking
-                    ball.position.y = player.position.y - ball.radius - 1;
-                }
-
                 // 4. Handle block collisions
                 bool collision_handled = false;
                 for (int i = 0; i < BLOCKS_ROWS && !collision_handled; i++) {
@@ -889,12 +926,8 @@ int main() {
                 }
             }
 
-            if (!ball_launched && arrow.visible) {
-                Vector2 arrowStart = (Vector2)
-                        {
-                                player.position.x + player.size.x / 2,
-                                player.position.y - ball.radius
-                        };
+            if ((!ball_launched || sticky_state.is_stuck) && arrow.visible) {
+                Vector2 arrowStart = ball.position;
 
                 DrawArrow(arrowStart, arrow.angle, RED);
 
@@ -927,6 +960,15 @@ int main() {
             // Draw active power-up indicators
             if (has_sticky_powerup) {
                 DrawText("STICKY", 10, 120, 20, PURPLE);
+                if (sticky_state.is_stuck) {
+                    const char* launchText = "Press SPACE to Launch";
+                    int textWidth = MeasureText(launchText, 20);
+                    DrawText(launchText,
+                             ball.position.x - textWidth/2,
+                             ball.position.y - 30,
+                             20,
+                             PURPLE);
+                }
             }
             if (has_laser_powerup) {
                 DrawText("LASER", 10, 150, 20, RED);
