@@ -26,10 +26,9 @@
 667	1489	7602840733819992	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/win32_joystick.c.obj	3f9cb4b550b6043f
 9	1663	7602840727244422	_deps/raylib-build/raylib/CMakeFiles/raylib.dir/rmodels.c.obj	7cc014d07da36450
 1070	1732	7602840737860343	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/win32_monitor.c.obj	5d3aeef6c32a6044
+6	63	7602873288372097	CMakeFiles/Snake.dir/snake_list.c.obj	515fabcb7fed9ab7
 7	1753	7602840727224420	_deps/raylib-build/raylib/CMakeFiles/raylib.dir/rcore.c.obj	97df861f08d62956
 1078	1850	7602840737930348	_deps/raylib-build/raylib/external/glfw/src/CMakeFiles/glfw.dir/win32_window.c.obj	1b5245d5f84181ce
 3176	3295	7602840758911602	_deps/raylib-build/raylib/libraylib.a	6dc0f18d556c8ecd
-49	163	7602842534455039	Snake.exe	1b9178884fea9bc6
-4	63	7602873288352092	CMakeFiles/Snake.dir/snake_array.c.obj	276ef59b5dc8040e
-6	63	7602873288372097	CMakeFiles/Snake.dir/snake_list.c.obj	515fabcb7fed9ab7
 63	204	7602873288942272	Snake.exe	1189b82eb57e1e16
+4	63	7602873288352092	CMakeFiles/Snake.dir/snake_array.c.obj	276ef59b5dc8040e
