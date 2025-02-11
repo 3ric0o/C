@@ -7,6 +7,14 @@
 
 #define TABLE_SIZE 16
 
+// Window configuration
+#define WINDOW_WIDTH 1280
+#define WINDOW_HEIGHT 720
+#define INVENTORY_PADDING 20
+#define SLOT_SIZE 80
+#define SLOTS_PER_ROW 8
+#define ITEM_LIST_WIDTH 300
+
 typedef enum {
     SORT_BY_VALUE,
     SORT_BY_RARITY,
@@ -68,5 +76,6 @@ void heap_sort_nodes(InventoryDatabase* db, InventoryNode** headRef,CompareFunct
 void print_inventory(const InventoryDatabase* db);
 void print_item_details(const Item* item, int quantity);
 const char* get_rarity_string(enum Rarity rarity);
+void draw_inventory_ui(const InventoryDatabase* db, int* selected_index);
 
 #endif //LAB_0X11H_INVENTORY_H

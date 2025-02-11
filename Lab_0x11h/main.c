@@ -18,8 +18,10 @@ enum Item_Name {
 
 int main()
 {
+
     InventoryDatabase inventory;
     init_inventory_database(&inventory);
+    
 
     // ================= TEST CODE =================
 
