@@ -8,14 +8,12 @@ include(FetchContent)
 
 # define a function for adding git dependencies
 function(include_dependency libName gitURL gitTag)
-    # setup the declare
     FetchContent_Declare(${libName}
             GIT_REPOSITORY ${gitURL}
             GIT_TAG        ${gitTag}
             GIT_SHALLOW    TRUE
             GIT_PROGRESS   TRUE
     )
-
     FetchContent_MakeAvailable(${libName})
 endfunction()
 
@@ -42,3 +40,6 @@ target_include_directories(Lab_0x11h PRIVATE ${raylib_INCLUDE_DIRS})
 
 # link all libraries to the project
 target_link_libraries(Lab_0x11h PRIVATE ${LIB1})
+
+# Copy icons directory to build directory
+file(COPY ${CMAKE_SOURCE_DIR}/icons DESTINATION ${CMAKE_BINARY_DIR})
