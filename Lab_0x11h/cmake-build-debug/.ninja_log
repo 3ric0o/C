@@ -1,0 +1,7 @@
+# ninja log v6
+20	67	7609731814731694	CMakeFiles/Lab_0x11h.dir/main.c.obj	d22c98b00633b9f6
+2	51	7608869401808938	CMakeFiles/Lab_0x11h.dir/Inventory.c.obj	6f286025be253058
+67	117	7609731815201509	Lab_0x11h.exe	f85c9f25c5af0113
+9	75	7609731521228442	CMakeFiles/Lab_0x11h.dir/inventory.c.obj	7d027a50042ed2ac
+8	42	7608924428360522	CMakeFiles/Lab_0x11h.dir/item.c.obj	a04dd1f50a2f6509
+11	63	7609731521258196	CMakeFiles/Lab_0x11h.dir/display.c.obj	856ca8fe0478203d
